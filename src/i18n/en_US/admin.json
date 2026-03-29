@@ -1,0 +1,8 @@
+{
+    "keywords": {
+        "admin": "Administrator"
+    },
+    "error.driverNotFound": "Driver not found",
+    "error.orderNotFound": "Order not found",
+    "error.assignmentNotFound": "Assignment not found"
+}

@@ -1,0 +1,449 @@
+# Development Guide
+
+- [Development Guide](#development-guide)
+  - [First-time Setup](#first-time-setup)
+  - [Installation](#installation)
+  - [Database Configuration](#database-configuration)
+    - [PostgreSQL (Default)](#postgresql-default)
+    - [MySQL/MariaDB Alternative](#mysqlmariadb-alternative)
+    - [Database Operations](#database-operations)
+      - [Migration Examples](#migration-examples)
+  - [Development Server](#development-server)
+  - [Project Structure](#project-structure)
+  - [Code Generation](#code-generation)
+  - [Environment Variables](#environment-variables)
+  - [Docker Development](#docker-development)
+    - [Prerequisites](#prerequisites)
+    - [Running with Docker](#running-with-docker)
+    - [Docker Compose Services](#docker-compose-services)
+  - [Development Workflow](#development-workflow)
+  - [Debugging](#debugging)
+    - [VS Code Configuration](#vs-code-configuration)
+    - [Debug Commands](#debug-commands)
+  - [Performance Optimization](#performance-optimization)
+    - [Development Performance](#development-performance)
+    - [Production Considerations](#production-considerations)
+
+## First-time Setup
+
+Ensure you have the required tools installed:
+
+- [Node.js](https://nodejs.org/en/) (v24+ required)
+- [pnpm](https://pnpm.io/installation) (v10.26+)
+- [PostgreSQL](https://www.postgresql.org/) (v14+)
+- [Git](https://git-scm.com/)
+
+## Installation
+
+```bash
+# Install dependencies from package.json
+pnpm install
+```
+
+> **Note**: Don't delete `pnpm-lock.yaml` before installation. See more in [pnpm docs](https://pnpm.io/lockfile)
+
+## Database Configuration
+
+The project uses [TypeORM](https://github.com/typeorm/typeorm) with the Data Mapper pattern and supports multiple database types.
+
+### PostgreSQL (Default)
+
+1. Install and start PostgreSQL
+2. Create a database for your application
+3. Configure your `.env` file:
+
+```env
+# Database Configuration
+DB_TYPE=postgres
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+DB_DATABASE=nest_boilerplate
+
+# Enable ORM logging (development only)
+ENABLE_ORM_LOGS=true
+```
+
+### MySQL/MariaDB Alternative
+
+If you prefer MySQL/MariaDB over PostgreSQL:
+
+1. Update your `.env` file:
+```env
+# Database Configuration
+DB_TYPE=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USERNAME=mysql
+DB_PASSWORD=mysql
+DB_DATABASE=nest_boilerplate
+DB_ROOT_PASSWORD=mysql
+DB_ALLOW_EMPTY_PASSWORD=yes
+```
+
+2. Update `ormconfig.ts`:
+```typescript
+export const dataSource = new DataSource({
+  type: 'mysql', // Change from 'postgres' to 'mysql'
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT),
+  username: process.env.DB_USERNAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
+  // ... rest of configuration
+});
+```
+
+3. Clear existing migrations and regenerate:
+```bash
+# Remove existing migrations
+rm -rf src/database/migrations/*
+
+# Generate new migrations for MySQL
+pnpm migration:generate -- --name=initial-migration
+```
+
+### Database Operations
+
+> **Note**: For TypeORM v0.3+, the migration commands have changed:
+> - `migration:create` now requires the full path to the migration file
+> - `migration:generate` requires the `-d` flag to specify the DataSource configuration
+> - All commands now use the DataSource configuration instead of the old ormconfig.ts format
+
+#### Migration Examples
+
+**Creating a new migration manually:**
+```bash
+# Create a new migration file
+pnpm migration:create src/database/migrations/add-gifts-table
+
+# This generates: 1754340825698-add-gifts-table.ts
+```
+
+**Generating migration from entity changes:**
+```bash
+# 1. Create or modify your entity (e.g., src/modules/gift/gift.entity.ts)
+# 2. Generate migration based on entity changes
+pnpm migration:generate -- --name=add-gifts-table
+
+# 3. Review the generated migration file
+# 4. Run the migration
+pnpm migration:run
+```
+
+**Complete workflow example:**
+```bash
+# 1. Create entity
+# Edit: src/modules/gift/gift.entity.ts
+
+# 2. Generate migration
+pnpm migration:generate -- --name=gifts-table
+
+# 3. Review generated migration
+# File: src/database/migrations/1754340825698-gifts-table.ts
+
+# 4. Run migration
+pnpm migration:run
+
+# 5. Verify migration status
+pnpm migration:show
+
+# Revert the last migration
+pnpm migration:revert
+
+# Drop entire database schema (⚠️ destructive)
+pnpm schema:drop
+
+```
+
+## Development Server
+
+The project uses Vite for fast development with hot module replacement:
+
+```bash
+# Start development server with Vite (recommended)
+pnpm start:dev
+
+# Alternative: Start with NestJS CLI
+pnpm nest:start:dev
+
+# Start with file watching
+pnpm watch:dev
+
+# Start with debugger enabled
+pnpm nest:start:debug
+```
+
+> **Note**: If you're on Linux and see an `ENOSPC` error, you must [increase the number of available file watchers](https://stackoverflow.com/questions/22475849/node-js-error-enospc#answer-32600959).
+
+The development server will be available at:
+- **Application**: `http://localhost:3000`
+- **API Documentation**: `http://localhost:3000/documentation`
+
+## Project Structure
+
+```
+src/
+├── common/                 # Shared DTOs, utilities, and base classes
+│   ├── dto/               # Common data transfer objects
+│   └── abstract.entity.ts # Base entity class
+├── constants/             # Application-wide constants
+├── database/              # Database configuration and migrations
+│   └── migrations/        # TypeORM migration files
+├── decorators/            # Custom decorators
+├── entity-subscribers/    # TypeORM entity subscribers
+├── exceptions/            # Custom exception classes
+├── filters/               # Exception filters
+├── guards/                # Authentication and authorization guards
+├── i18n/                  # Internationalization files
+│   ├── en_US/            # English translations
+│   └── ru_RU/            # Russian translations
+├── interceptors/          # Request/Response interceptors
+├── interfaces/            # TypeScript interfaces
+├── modules/               # Feature modules
+│   ├── auth/             # Authentication module
+│   ├── user/             # User management module
+│   ├── post/             # Post management module
+│   └── health-checker/   # Health check module
+├── providers/             # Custom providers
+├── shared/                # Shared services and utilities
+│   └── services/         # Global services
+└── validators/            # Custom validators
+```
+
+## Code Generation
+
+Use NestJS CLI for rapid development:
+
+```bash
+# Install NestJS CLI globally (if not already installed)
+pnpm add -g @nestjs/cli
+
+# Generate a new module
+nest generate module feature-name
+
+# Generate a new service
+nest generate service feature-name
+
+# Generate a new controller
+nest generate controller feature-name
+
+# Generate a complete resource (module, service, controller, DTOs)
+nest generate resource feature-name
+
+# Use project-specific generator
+pnpm generate service feature-name
+pnpm g controller feature-name
+```
+
+> **Note**: The project includes custom schematics via `awesome-nestjs-schematics` for enhanced code generation.
+
+## Environment Variables
+
+Create a `.env` file based on `.env.example`:
+
+```env
+# Application
+NODE_ENV=development
+PORT=3000
+
+# Database
+DB_TYPE=postgres
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+DB_DATABASE=nest_boilerplate
+ENABLE_ORM_LOGS=true
+
+# JWT Authentication (RSA key pair — RS256 algorithm)
+# Generate keys: openssl genpkey -algorithm RSA -out private.pem && openssl rsa -pubout -in private.pem -out public.pem
+JWT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+JWT_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
+
+# Redis
+REDIS_URL=redis://localhost:6379
+
+# Telegram Bot (for Telegram authentication)
+TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+TELEGRAM_BOT_USERNAME=your-telegram-bot-username
+
+# AWS S3 (optional)
+AWS_S3_BUCKET_NAME=your-bucket-name
+
+# MeiliSearch (optional)
+MEILI_HOST=http://localhost:7700
+MEILI_MASTER_KEY=your-meilisearch-master-key
+
+# CORS
+CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+
+# API Documentation
+ENABLE_DOCUMENTATION=true
+
+# Throttling
+THROTTLE_TTL=60
+THROTTLE_LIMIT=10
+
+# NATS (optional)
+NATS_ENABLED=false
+NATS_HOST=localhost
+NATS_PORT=4222
+```
+
+## Docker Development
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+
+### Running with Docker
+
+```bash
+# Start all services (app + database)
+PORT=3000 docker-compose up
+
+# Start in detached mode
+PORT=3000 docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+
+# Rebuild and start
+docker-compose up --build
+```
+
+### Docker Compose Services
+
+The `docker-compose.yml` includes:
+
+- **app**: NestJS application
+- **postgres**: PostgreSQL database
+- **pgAdmin**: Database administration tool (available at `http://localhost:8080`)
+- **meilisearch**: Meilisearch search engine (available at `http://localhost:7701`)
+
+For MySQL development, use:
+```bash
+docker-compose -f docker-compose_mysql.yml up
+```
+
+## Development Workflow
+
+1. **Feature Development**:
+   ```bash
+   # Create feature branch
+   git checkout -b feature/new-feature
+
+   # Generate module structure
+   pnpm g resource feature-name
+
+   # Implement feature
+   # Write tests
+   # Update documentation
+   ```
+
+2. **Code Quality**:
+   ```bash
+   # Run linting
+   pnpm lint
+
+   # Fix linting issues
+   pnpm lint:fix
+
+   # Run tests
+   pnpm test
+
+   # Check test coverage
+   pnpm test:cov
+   ```
+
+3. **Database Changes**:
+   ```bash
+   # Create/modify entities
+   # Generate migration
+   pnpm migration:generate -- --name=[migration-name]
+
+   # Review generated migration
+   # Run migration
+   pnpm migration:run
+   ```
+
+## Debugging
+
+### VS Code Configuration
+
+Create `.vscode/launch.json`:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug NestJS",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/main.ts",
+      "runtimeArgs": ["--loader", "ts-node/esm"],
+      "env": {
+        "NODE_ENV": "development"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen"
+    }
+  ]
+}
+```
+
+### Debug Commands
+
+```bash
+# Start with debugger
+pnpm nest:start:debug
+
+# Debug tests
+pnpm test:debug
+
+# Debug specific test file
+pnpm test:debug -- user.service.spec.ts
+```
+
+## Performance Optimization
+
+### Development Performance
+
+1. **Use Vite for Development**:
+   - Faster startup times
+   - Hot module replacement
+   - Optimized bundling
+
+2. **Database Query Optimization**:
+   ```bash
+   # Enable query logging
+   ENABLE_ORM_LOGS=true
+
+   # Monitor slow queries
+   # Add database indexes
+   # Use query builders for complex queries
+   ```
+
+3. **Memory Management**:
+   ```bash
+   # Monitor memory usage
+   node --inspect src/main.ts
+
+   # Increase Node.js memory limit if needed
+   node --max-old-space-size=4096 src/main.ts
+   ```
+
+### Production Considerations
+
+- Use `pnpm build:prod` for optimized builds
+- Enable compression middleware
+- Configure proper caching strategies
+- Set up monitoring and logging
+- Use environment-specific configurations
